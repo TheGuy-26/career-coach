@@ -3,7 +3,12 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const pdfParse = require('pdf-parse');
+const { InferenceClient } = require("@huggingface/inference");
+
 const app = express();
+
+// Initialize the Hugging Face Inference Client
+const client = new InferenceClient(process.env.HF_API_KEY);
 
 // CORS middleware
 app.use((req, res, next) => {
@@ -39,7 +44,6 @@ app.post('/upload-resume', async (req, res) => {
     console.log('Extracted text from PDF');
     const resumeText = pdfData.text;
     
-    // Send back just the extracted text
     res.json({ text: resumeText });
     
   } catch (error) {
@@ -47,6 +51,50 @@ app.post('/upload-resume', async (req, res) => {
     res.status(500).json({
       error: 'Failed to process PDF',
       message: error.message
+    });
+  }
+});
+
+// Add this to your existing backend code
+
+// Endpoint to ask questions about the resume text
+app.post('/ask-question', async (req, res) => {
+    try {
+      const { text, question } = req.body;
+      
+      if (!text || !question) {
+        return res.status(400).json({ error: 'Both text and question are required' });
+      }
+
+      const chatCompletion = await client.chatCompletion({
+        provider: "together",
+        model: "deepseek-ai/DeepSeek-R1",
+        messages: [
+            {
+              role: "system",
+              content: "You are a helpful assistant that analyzes resumes and provides insights.",
+            },
+            {
+              role: "user",
+              content: `Resume Text: ${text}`,
+            },
+          ],
+          max_tokens: 5000,
+        });
+
+    // Extract the response from the model
+    const answer = chatCompletion.choices[0].message.content;
+
+    // Send the answer back to the client
+    res.json({ answer });
+  } catch (error) {
+    console.error('Error asking question:', error.message);
+    if (error.response) {
+      console.error('API response:', error.response.data);
+    }
+    res.status(500).json({
+      error: 'Failed to process question',
+      message: error.message,
     });
   }
 });
